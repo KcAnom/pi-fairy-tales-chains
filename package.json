@@ -17,6 +17,14 @@
   "files": [
     "skills"
   ],
+  "peerDependencies": {
+    "pi-fairy-tales": "*"
+  },
+  "peerDependenciesMeta": {
+    "pi-fairy-tales": {
+      "optional": false
+    }
+  },
   "pi": {
     "skills": [
       "./skills"

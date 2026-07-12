@@ -8,15 +8,20 @@ Each chain is built to leverage [**pi-fairy-tales**](https://github.com/KcAnom/p
 
 ## Install
 
+**Requires [`pi-fairy-tales`](https://github.com/KcAnom/pi-fairy-tales)** — the chains call its tools (`agent`, `artifact`, `/ultraplan`, `fetch`, hooks). Install both as top-level packages:
+
 ```bash
 npm i -g @earendil-works/pi-coding-agent    # pi itself
-pi install pi-fairy-tales                     # the capabilities these chains use
+pi install pi-fairy-tales                     # the capabilities the chains call (declared as a peer dependency)
 pi install pi-fairy-tales-chains              # the chains
 ```
+
+Both load independently in the same pi and compose at runtime. They are deliberately **not** bundled into one install: pi loads each package's tools once, and bundling a second copy of `pi-fairy-tales` would conflict with a standalone install of it. Two installs, zero conflicts.
 
 Or from git:
 
 ```bash
+pi install git:github.com/KcAnom/pi-fairy-tales
 pi install git:github.com/KcAnom/pi-fairy-tales-chains
 ```
 

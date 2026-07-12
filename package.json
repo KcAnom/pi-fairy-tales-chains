@@ -1,6 +1,6 @@
 {
   "name": "pi-fairy-tales-chains",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Six durable skill chains for pi — release, feature-ship, onboard, bughunt, migrate, and research — multi-phase workflows that pass state through a file on disk so they survive across sessions, each leveraging pi-fairy-tales capabilities.",
   "type": "module",
   "keywords": [
@@ -28,7 +28,8 @@
   "pi": {
     "skills": [
       "./skills"
-    ]
+    ],
+    "image": "https://raw.githubusercontent.com/KcAnom/pi-fairy-tales-chains/main/assets/masthead.webp"
   },
   "license": "MIT"
 }

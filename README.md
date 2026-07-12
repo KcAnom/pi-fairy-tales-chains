@@ -1,3 +1,9 @@
+<div align="center">
+
+![Fairy Tales — once upon a terminal](https://raw.githubusercontent.com/KcAnom/pi-fairy-tales-chains/main/assets/masthead.webp)
+
+</div>
+
 # pi-fairy-tales-chains
 
 Six **durable skill chains** for the [pi coding agent](https://github.com/earendil-works/pi-mono) — multi-phase workflows where each phase is its own skill and state flows between them through a file on disk, so a long job **survives across sessions and context windows** and resumes exactly where it stopped.

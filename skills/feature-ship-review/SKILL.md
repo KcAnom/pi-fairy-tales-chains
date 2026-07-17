@@ -11,7 +11,7 @@ description: >
 
 # Feature Ship: Review
 
-Chain version: 1
+Chain version: 2 (durable state contract — see docs/STATE-CONTRACT.md)
 
 Phase 3 of 4: feature-ship-spec → feature-ship-build → **feature-ship-review** → feature-ship-ship
 
@@ -23,78 +23,98 @@ dispatches fairy-tales **review-role subagents** for targeted checks (correctnes
 security, spec conformance), then merges everything into one findings list split into
 blocking and non-blocking so Phase 4 knows exactly what must be fixed before shipping.
 
+All chain state is managed by the **chain tool**: authoritative JSON at
+`.pi/fairy-tales/chains/feature-ship/state.json` with a human-readable `state.md`
+projection beside it. Never create or edit state files by hand, and never create lock
+files — the tool locks for you.
+
 ## Load State
 
-Read `.feature-ship-state.md`:
+Call the **chain tool** with `action: "status", chain: "feature-ship"` (a legacy
+`.feature-ship-state.md` from an older version is imported automatically):
 
-- If missing → abort: "No state file found. Run `feature-ship-spec` first."
-- If frontmatter does not parse or `chain_version` ≠ `1` → abort: malformed or
-  incompatible-edition state file.
-- If `status` is not one of `spec-done | build-done | review-done | complete` → abort:
-  "Unrecognized status — this state file may belong to a different or since-edited
-  chain."
-- If `status` ≠ `build-done` → abort: "Expected `build-done` but found `<actual>`. Run
-  the previous phase first."
-- If the `## Phase 2 — Build` section or the branch/worktree/patch location is missing
-  → abort as corrupted.
-- Check `.feature-ship-state.lock`; abort if present, else create it.
+- If there is no run → abort: "No feature-ship run found. Run `feature-ship-spec` first."
+- If the run is not `active` with `currentPhase: "review"` → abort: "Expected the run to
+  be at phase `review` but it is at `<currentPhase/status>`. Run that phase's skill
+  instead."
+- If the build output (`data.filesChanged` / the build phase's `artifacts.branch` or
+  summary) is missing → abort: "Phase pointer looks right but the Phase 2 output is
+  missing. Treat as corrupted — restart the chain or repair via chain action 'update'."
+- If the tool reports the chain is locked by another session, abort; a dead session's
+  lock can be cleared with `action: "unlock"`. Never create lock files yourself.
+
+Note the run's `runId` — it keys this phase's quest dedupe keys.
 
 ## Workflow
 
 ### Step 1 — Assemble the diff
 
 Get the exact diff to review from the location Phase 2 recorded (branch, worktree, or
-patch file). Do not re-derive it from the spec — review what was actually built.
+patch file — `artifacts.branch` / the build phase summary). Do not re-derive it from the
+spec — review what was actually built.
 
 ### Step 2 — Run the deep-review skill
 
 Invoke the **deep-review skill** against the diff. Let it run its full multi-angle
 pass (correctness, edge cases, consistency) rather than summarizing it yourself.
 
-### Step 3 — Dispatch review-role subagents
+### Step 3 — Dispatch review-role subagents via durable quests
 
-Dispatch fairy-tales **review-role subagents** in parallel, each with a narrow brief:
+Dispatch fairy-tales **review-role subagents** in parallel, each with a narrow brief.
+Because review passes can be long-running and must survive a session restart, use the
+**quest tool** rather than a bare agent call — one quest per subagent:
+
+- `quest` action `enqueue` with `role: "review"`, the brief below, and:
+  - `dedupeKey: "feature-ship/<runId>/review/<unit>"` (e.g. `acceptance`, `security`,
+    or a risk area name from the Phase 1 spec) — re-running a crashed phase returns
+    the same quest instead of duplicating a review pass;
+  - `chain: { chain: "feature-ship", runId: "<runId>", phase: "review" }`;
+  - `retainUntilConsumed: true`.
+- If a returned quest is already `done` (crash-resume case), reuse its stored result;
+  otherwise `quest` action `run` with its `id` and collect the result.
+- After extracting findings into chain state (Step 5), `quest` action `consume` each
+  quest by `id`.
+
+Briefs to fan out:
 
 - One checks the diff against the Phase 1 acceptance criteria specifically — does every
   criterion have code behind it?
 - One checks for correctness/security issues the deep-review skill's pass might not
   specialize in (e.g., auth, injection, data handling) if the diff touches that surface.
-- Additional subagents as the diff's risk areas (from the Phase 1 spec's "Risks"
+- Additional quests as the diff's risk areas (from the Phase 1 spec's "Risks"
   section) warrant.
 
 ### Step 4 — Merge findings
 
-Combine the deep-review skill's output and every review-role subagent's output into one
+Combine the deep-review skill's output and every review-role quest's output into one
 list. Classify each finding as:
 
 - **Blocking** — violates an acceptance criterion, introduces a correctness/security
   bug, or breaks something that worked before.
 - **Non-blocking** — style, minor cleanup, "nice to have" — safe to ship without.
 
-### Step 5 — Update State
+### Step 5 — Complete the phase
 
-Atomically rewrite `.feature-ship-state.md` (temp file + rename), appending:
+Call the **chain tool**:
 
-```markdown
-## Phase 3 — Review
-**Output**: deep-review skill + review-role subagent findings merged
-**Key decisions**: <N> blocking, <M> non-blocking findings
-
-### Blocking
-- <finding 1>
-- <finding 2>
-
-### Non-blocking
-- <finding 1>
+```
+action: "complete-phase", chain: "feature-ship", phase: "review",
+summary: "deep-review skill + review-role quest findings merged: <N> blocking, <M> non-blocking",
+data: {
+  "blockingFindings": ["<finding 1>", "<finding 2>", "..."],
+  "nonBlockingFindings": ["<finding 1>", "..."]
+},
+artifacts: { "reviewQuests": "<quest ids>" }
 ```
 
-and updating `status: review-done`. Delete `.feature-ship-state.lock` after the write.
+The tool validates this is the current phase, advances the run to `ship`, and rewrites
+the JSON + markdown projection atomically.
 
 ## Handoff
 
 After completing this phase, output exactly:
 
-> Phase 3 complete. State written to `.feature-ship-state.md`.
+> Phase 3 complete. Chain state updated (`.pi/fairy-tales/chains/feature-ship/state.json`).
 > Run `/feature-ship-ship` to begin Phase 4.
 
 Do not start the next phase. Do not offer to continue. Output only the handoff line and stop.

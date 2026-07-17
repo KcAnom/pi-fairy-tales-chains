@@ -10,7 +10,7 @@ description: >
 
 # Research: Artifact
 
-Chain version: 1
+Chain version: 2 (durable state contract — see docs/STATE-CONTRACT.md)
 
 Phase 3 of 3: research-gather → research-synthesize → **research-artifact**
 
@@ -21,27 +21,34 @@ polished, human-readable deliverable: a self-contained HTML research report prod
 with the **artifact tool** and opened for the user. Notes any gaps worth a follow-up
 research round, then marks the chain complete.
 
+All chain state is managed by the **chain tool**: authoritative JSON at
+`.pi/fairy-tales/chains/research/state.json` with a human-readable `state.md`
+projection beside it. Never create or edit state files by hand, and never create lock
+files — the tool locks for you.
+
 ## Load State
 
-Read `.research-state.md`:
+Call the **chain tool** with `action: "status", chain: "research"` (a legacy
+`.research-state.md` from an older version is imported automatically):
 
-- If missing → abort: "No state file found. Run `research-gather` first."
-- If frontmatter does not parse or `chain_version` ≠ `1` → abort: malformed or
-  incompatible-edition state file.
-- If `status` is unrecognized → abort: may belong to a different or since-edited chain.
-- If `status` ≠ `synthesize-done` → abort: "Expected status `synthesize-done` but found
-  `<actual>`. Run the previous phase first."
-- If the `## Phase 2 — Synthesize` section is missing despite the right status → abort:
-  "Status looks right but the Phase 2 output is missing. Treat as corrupted."
-- Check `.research-state.lock`; abort if present, else create it before writing.
+- If there is no run → abort: "No research run found. Run `research-gather` first."
+- If the run is not `active` with `currentPhase: "artifact"` → abort: "Expected the
+  run to be at phase `artifact` but it is at `<currentPhase/status>`. Run that phase's
+  skill instead."
+- If `data.themes` (or the synthesize phase summary) is missing → abort: "Phase
+  pointer looks right but the Phase 2 output is missing. Treat as corrupted — restart
+  the chain or repair via chain action 'update'."
+- If the tool reports the chain is locked by another session, abort; a dead session's
+  lock can be cleared with `action: "unlock"`. Never create lock files yourself.
 
 ## Workflow
 
 ### Step 1 — Build the report content
 
-Turn the Phase 2 synthesis into report sections: an overview of the research question,
-the themes with findings and source citations, a contradictions section, and an open
-gaps / follow-up section. Write this content to a file the artifact tool can publish.
+Turn `data.themes`, `data.contradictions`, and `data.gaps` into report sections: an
+overview of the research question, the themes with findings and source citations, a
+contradictions section, and an open gaps / follow-up section. Write this content to a
+file the artifact tool can publish.
 
 ### Step 2 — Produce the artifact
 
@@ -53,26 +60,30 @@ question.
 ### Step 3 — Note follow-up gaps
 
 Call out, in the chat response (not just inside the artifact), any open gaps from
-Phase 2 that are substantial enough to justify a follow-up `research-gather` round.
+`data.gaps` that are substantial enough to justify a follow-up `research-gather`
+round.
 
-## Update State
+### Step 4 — Complete the phase
 
-Atomically rewrite `.research-state.md` (temp file + rename), appending:
+Call the **chain tool**:
 
-```markdown
-## Phase 3 — Artifact
-**Output**: HTML research report produced via the artifact tool and opened
-**Key decisions**: <report URL/path>; gaps flagged for follow-up (if any)
+```
+action: "complete-phase", chain: "research", phase: "artifact",
+summary: "HTML research report produced via the artifact tool and opened; gaps flagged for follow-up (if any)",
+data: {},
+artifacts: { "reportUrl": "<artifact tool URL>" }
 ```
 
-and updating `status: complete` in the frontmatter. Delete `.research-state.lock`
-after the write.
+The tool validates this is the current phase, marks the run `complete`, and rewrites
+the JSON + markdown projection atomically — this is the final phase, so the run's
+`status` becomes `complete` and its lock is released.
 
 ## Handoff
 
 After completing this phase, output exactly:
 
-> Chain complete! All 3 phases finished. State written to `.research-state.md`.
+> Chain complete! All 3 phases finished. Chain state updated
+> (`.pi/fairy-tales/chains/research/state.json`).
 > Run `research-gather` again to start a new session.
 
 Do not continue. Stop here.

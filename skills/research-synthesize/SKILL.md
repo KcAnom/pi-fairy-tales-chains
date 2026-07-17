@@ -10,7 +10,7 @@ description: >
 
 # Research: Synthesize
 
-Chain version: 1
+Chain version: 2 (durable state contract — see docs/STATE-CONTRACT.md)
 
 Phase 2 of 3: research-gather → **research-synthesize** → research-artifact
 
@@ -21,27 +21,31 @@ into a structured synthesis: cross-source themes, the actual findings, where sou
 contradict each other, and what's still an open gap. Makes no report yet — that's
 Phase 3 — so this stays a focused analytical pass over already-gathered material.
 
+All chain state is managed by the **chain tool**: authoritative JSON at
+`.pi/fairy-tales/chains/research/state.json` with a human-readable `state.md`
+projection beside it. Never create or edit state files by hand, and never create lock
+files — the tool locks for you.
+
 ## Load State
 
-Read `.research-state.md` from the project root:
+Call the **chain tool** with `action: "status", chain: "research"` (a legacy
+`.research-state.md` from an older version is imported automatically):
 
-- If missing → abort: "No state file found. Run `research-gather` first."
-- If the frontmatter does not parse, or `chain_version` ≠ `1` → abort: state file is
-  malformed or written by an incompatible edition of the chain.
-- If `status` is not one of `gather-done | synthesize-done | complete` → abort:
-  "Unrecognized status — this state file may belong to a different or since-edited
-  chain."
-- If `status` ≠ `gather-done` → abort: "Expected status `gather-done` but found
-  `<actual>`. Run the previous phase first."
-- If the `## Phase 1 — Gather` section is missing despite the right status → abort:
-  "Status looks right but the Phase 1 output is missing. Treat as corrupted."
-- Check `.research-state.lock`; abort if present, else create it before writing.
+- If there is no run → abort: "No research run found. Run `research-gather` first."
+- If the run is not `active` with `currentPhase: "synthesize"` → abort: "Expected the
+  run to be at phase `synthesize` but it is at `<currentPhase/status>`. Run that
+  phase's skill instead."
+- If `data.sources` (or the gather phase summary) is missing → abort: "Phase pointer
+  looks right but the Phase 1 output is missing. Treat as corrupted — restart the
+  chain or repair via chain action 'update'."
+- If the tool reports the chain is locked by another session, abort; a dead session's
+  lock can be cleared with `action: "unlock"`. Never create lock files yourself.
 
 ## Workflow
 
 ### Step 1 — Compress and dedupe
 
-Read every per-source note from `## Phase 1 — Gather`. Merge overlapping points across
+Read every per-source note from `data.sources`. Merge overlapping points across
 sources, dedupe repeated quotes/claims, and drop material that turned out irrelevant
 to the research question.
 
@@ -61,28 +65,28 @@ contradiction by picking a side without saying so.
 List open questions the gathered material doesn't answer — these become the
 "worth a follow-up round" notes that Phase 3 surfaces in the final report.
 
-## Update State
+### Step 5 — Complete the phase
 
-Atomically rewrite `.research-state.md` (temp file + rename), appending:
+Call the **chain tool**:
 
-```markdown
-## Phase 2 — Synthesize
-**Output**: N themes, M findings, K contradictions, J open gaps
-**Key decisions**: <any judgment calls made while deduping or resolving overlaps>
-
-<themes with findings and source citations>
-<contradictions between sources>
-<open gaps>
+```
+action: "complete-phase", chain: "research", phase: "synthesize",
+summary: "N themes, M findings, K contradictions, J open gaps; judgment calls made while deduping or resolving overlaps",
+data: {
+  "themes": [ { "theme": "<name>", "findings": ["<finding + citation>", "..."] } ],
+  "contradictions": ["<what each source says, and which is more credible/current>"],
+  "gaps": ["<open question>", "..."]
+}
 ```
 
-and updating `status: synthesize-done` in the frontmatter. Delete
-`.research-state.lock` after the write.
+The tool validates this is the current phase, advances the run to `artifact`, and
+rewrites the JSON + markdown projection atomically.
 
 ## Handoff
 
 After completing this phase, output exactly:
 
-> Phase 2 complete. State written to `.research-state.md`.
+> Phase 2 complete. Chain state updated (`.pi/fairy-tales/chains/research/state.json`).
 > Run `/research-artifact` to begin Phase 3.
 
 Do not start the next phase. Do not offer to continue. Output only the handoff line and stop.

@@ -33,7 +33,9 @@ pi install git:github.com/KcAnom/pi-fairy-tales-chains
 
 ## The chains
 
-Each is a **pipeline** (human-in-the-loop): every phase reads the shared `.<chain>-state.md`, does its work, updates state, and hands off with `Run /<chain>-<next>`. You review between phases; the state file means you can stop and resume days later.
+Each is a **pipeline** (human-in-the-loop): every phase reads the shared chain state, does its work, updates state, and hands off with `Run /<chain>-<next>`. You review between phases; the durable state means you can stop and resume days later.
+
+Since 0.2.0, `feature-ship`, `bughunt`, `migrate`, and `research` track state through the bundled **`chain` tool**: authoritative JSON at `.pi/fairy-tales/chains/<chain>/state.json` with a human-readable `state.md` projection, TTL'd cross-session locking, and automatic import of legacy `.<chain>-state.md` files (see `docs/STATE-CONTRACT.md`). Their heavy phase work runs as **quests** (pi-fairy-tales ≥ 0.15) with idempotent dedupe keys, so a crashed phase resumes the same work instead of duplicating it. `release` and `onboard` still use the legacy root markdown state files.
 
 | Chain | Phases | What it does | Fairy-tales muscle |
 |---|---|---|---|
@@ -57,16 +59,16 @@ Start the first phase, then follow each handoff:
 /release-verify               # phase 5 — "Chain complete!"
 ```
 
-Interrupted? Just run the next phase whenever you come back — the state file remembers where you were. Each phase refuses to run if the previous one didn't complete, so you can't skip a step or act on a half-written state file.
+Interrupted? Just run the next phase whenever you come back — the durable state remembers where you were (`/chains` shows every run in the project). Each phase refuses to run if the previous one didn't complete, so you can't skip a step or act on a half-written state.
 
 ## How a chain is built
 
 Every phase skill follows the [pi-skill-system-creator](https://github.com/KcAnom/pi-skill-system-creator) contract:
 
 - **Clean YAML front matter** so pi can discover the skill
-- **State validation** on entry — parses the frontmatter, checks `chain_version`, and refuses to proceed on a malformed or wrong-phase state file
-- **Atomic state writes** — full rewrite to a temp file then `mv`, so an interrupted write never corrupts the state
-- **An advisory lock** (`.<chain>-state.lock`) to catch two sessions running the same chain
+- **State validation** on entry — the `chain` tool verifies the run is active at exactly this phase and refuses out-of-order or missing-state runs (legacy chains parse frontmatter + `chain_version` instead)
+- **Atomic state writes** — the tool writes JSON + projection via temp file + rename, so an interrupted write never corrupts the state
+- **Cross-session locking** — a TTL'd lock (renewed on every write, auto-broken when stale, force-clearable with the tool's `unlock` action) catches two sessions running the same chain
 - **An explicit handoff** to the next phase (the last phase terminates with "Chain complete")
 
 Validate any chain yourself:

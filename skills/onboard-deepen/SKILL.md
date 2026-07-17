@@ -1,58 +1,76 @@
 ---
 name: onboard-deepen
 description: >
-  Phase 2 of 3 in the onboard chain (map → deepen → digest). Runs targeted deep reads of
-  the hotspot files the map phase surfaced — how core modules work, key data flows, and
-  non-obvious conventions — and optionally records durable facts via the fairy-tales
-  memory `remember` tool. Trigger when the previous phase says "run onboard-deepen next",
-  or standalone via "onboard-deepen", "phase 2 of onboard", "deepen the repo map",
-  "read the hotspots".
+  Phase 2 of 3 in the onboard chain (map → deepen → digest). Runs targeted deep reads,
+  via durable explore-role quests, of the hotspot files the map phase surfaced — how
+  core modules work, key data flows, and non-obvious conventions — and optionally
+  records durable facts via the fairy-tales memory `remember` tool. Trigger when the
+  previous phase says "run onboard-deepen next", or standalone via "onboard-deepen",
+  "phase 2 of onboard", "deepen the repo map", "read the hotspots".
 ---
 
 # Onboard: Deepen
 
-Chain version: 1
+Chain version: 2 (durable state contract — see docs/STATE-CONTRACT.md)
 
 Phase 2 of 3: onboard-map → **onboard-deepen** → onboard-digest
 
 ## Overview
 
-Takes the hotspot list produced by `onboard-map` and reads those files deeply — not just
-structurally — to understand how the core modules actually work, trace the key data
-flows through them, and catch conventions that aren't obvious from file names alone.
-Where a fact is durable enough to matter beyond this session, it is recorded with the
-fairy-tales memory `remember` tool so future sessions on this repo start ahead.
+Takes the hotspot list produced by `onboard-map` (`data.hotspots`) and reads those
+files deeply — not just structurally — to understand how the core modules actually
+work, trace the key data flows through them, and catch conventions that aren't obvious
+from file names alone. Where a fact is durable enough to matter beyond this session, it
+is recorded with the fairy-tales memory `remember` tool so future sessions on this repo
+start ahead.
+
+All chain state is managed by the **chain tool**: authoritative JSON at
+`.pi/fairy-tales/chains/onboard/state.json` with a human-readable `state.md`
+projection beside it. Never create or edit state files by hand, and never create lock
+files — the tool locks for you.
 
 ## Load State
 
-Read `.onboard-state.md`:
+Call the **chain tool** with `action: "status", chain: "onboard"` (a legacy
+`.onboard-state.md` from an older version is imported automatically):
 
-- If missing → abort: "No state file found. Run `onboard-map` first."
-- If the frontmatter does not parse, or `chain_version` ≠ `1` → abort: state file is
-  malformed or written by an incompatible edition of the chain.
-- If `status` is not one of `map-done | deepen-done | complete` → abort: "Unrecognized
-  status — this state file may belong to a different or since-edited chain."
-- If `status` ≠ `map-done` → abort: "Expected status `map-done` but found `<actual>`.
-  Run the previous phase first."
-- If the `## Phase 1 — Map` section is missing → abort: "Status looks right but the
-  Phase 1 output is missing. Treat as corrupted."
-- Check `.onboard-state.lock`; abort if present, else create it before writing.
+- If there is no run → abort: "No onboard run found. Run `onboard-map` first."
+- If the run is not `active` with `currentPhase: "deepen"` → abort: "Expected the run
+  to be at phase `deepen` but it is at `<currentPhase/status>`. Run that phase's skill
+  instead."
+- If `data.hotspots` (or the map phase summary) is missing → abort: "Phase pointer
+  looks right but the Phase 1 output is missing. Treat as corrupted — restart the
+  chain or repair via chain action 'update'."
+- If the tool reports the chain is locked by another session, abort; a dead session's
+  lock can be cleared with `action: "unlock"`. Never create lock files yourself.
+
+Note the run's `runId` — it keys this phase's quest dedupe keys.
 
 ## Workflow
 
 ### Step 1 — Select deep-read targets
 
-From the `## Phase 1 — Map` section, take the flagged hotspot files (top 3-6). Add any
-files those hotspots most heavily import from, if not already covered.
+Take `data.hotspots` (top 3-6 flagged files). Add any files those hotspots most
+heavily import from, if not already covered.
 
-### Step 2 — Deep read each hotspot
+### Step 2 — Deep read each hotspot via durable quests
 
-For each target, read the full file (not an excerpt) and work out:
+Because deep-reading several files can be long-running and must survive a session
+restart, use the **quest tool** rather than bare agent calls. For each target,
+`enqueue` a quest with `role: "explore"`, a self-contained task (read the full file —
+not an excerpt — and report back: what it's responsible for and why it's a hotspot,
+the key data flow(s) through it, and non-obvious conventions it embodies), and:
 
-- What it's responsible for and why it's a hotspot (fan-in/fan-out, size, or centrality).
-- The key data flow(s) through it — what comes in, what transforms happen, what goes out.
-- Non-obvious conventions it embodies (naming patterns, error handling style, state
-  management approach, anything a newcomer would get wrong by guessing).
+- `dedupeKey: "onboard/<runId>/deepen/<hotspot-id>"` (`<hotspot-id>` a sanitized form
+  of the file path) — re-running a crashed phase returns the same quest instead of
+  duplicating the read;
+- `chain: { chain: "onboard", runId: "<runId>", phase: "deepen" }`;
+- `retainUntilConsumed: true`.
+
+Issue all targets' `enqueue` calls in **one message** so they run in parallel. If a
+returned quest is already `done` (crash-resume case), reuse its stored result;
+otherwise `quest` action `run` with its `id` and collect the result. After extracting
+what's needed into chain state (Step 4), `quest` action `consume` each quest by `id`.
 
 ### Step 3 — Record durable facts in memory
 
@@ -63,27 +81,34 @@ whole map.
 
 ### Step 4 — Assemble the deepened understanding
 
-Merge the per-hotspot findings into a single deepened-understanding section: core module
-summaries, the key data flows traced end-to-end, and the non-obvious conventions found.
-This is what Phase 3 (`onboard-digest`) will turn into the architecture overview.
+Merge the per-hotspot quest results into a single deepened-understanding section: core
+module summaries, the key data flows traced end-to-end, and the non-obvious
+conventions found. This is what Phase 3 (`onboard-digest`) will turn into the
+architecture overview.
 
-## Update State
+### Step 5 — Complete the phase
 
-Atomically rewrite `.onboard-state.md` (temp file + rename), appending:
+Call the **chain tool**:
 
-```markdown
-## Phase 2 — Deepen
-**Output**: deep-read findings for <N> hotspot files (module summaries, data flows, conventions)
-**Key decisions**: facts written to fairy-tales memory: <list, or "none">
+```
+action: "complete-phase", chain: "onboard", phase: "deepen",
+summary: "deep-read findings assembled for N hotspot files (module summaries, data flows, conventions); facts written to fairy-tales memory: <list, or 'none'>",
+data: {
+  "deepened": [
+    { "file": "<path>", "summary": "<what it's responsible for / why hotspot>", "dataFlow": "<traced flow>", "conventions": "<non-obvious conventions>" }
+  ]
+},
+artifacts: { "deepenQuests": "<quest ids>" }
 ```
 
-and updating `status: deepen-done`. Delete `.onboard-state.lock` after the write.
+The tool validates this is the current phase, advances the run to `digest`, and
+rewrites the JSON + markdown projection atomically.
 
 ## Handoff
 
 After completing this phase, output exactly:
 
-> Phase 2 complete. State written to `.onboard-state.md`.
+> Phase 2 complete. Chain state updated (`.pi/fairy-tales/chains/onboard/state.json`).
 > Run `/onboard-digest` to begin Phase 3.
 
 Do not start the next phase. Do not offer to continue. Output only the handoff line and stop.

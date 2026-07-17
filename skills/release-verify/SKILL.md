@@ -9,7 +9,7 @@ description: >
 
 # Release: Verify
 
-Chain version: 1
+Chain version: 2 (durable state contract — see docs/STATE-CONTRACT.md)
 
 Phase 5 of 5: release-changelog → release-bump → release-tag → release-publish → **release-verify**
 
@@ -20,18 +20,26 @@ GitHub release exist, and the published metadata matches what was intended — t
 the chain complete. Reports faithfully: if a check fails, it says so rather than
 declaring success.
 
+All chain state is managed by the **chain tool**: authoritative JSON at
+`.pi/fairy-tales/chains/release/state.json` with a human-readable `state.md`
+projection beside it. Never create or edit state files by hand, and never create lock
+files — the tool locks for you.
+
 ## Load State
 
-Read `.release-state.md`:
+Call the **chain tool** with `action: "status", chain: "release"` (a legacy
+`.release-state.md` from an older version is imported automatically):
 
-- If missing → abort: "No state file found. Run `release-changelog` first."
-- If frontmatter does not parse or `chain_version` ≠ `1` → abort: malformed/incompatible.
-- If `status` is unrecognized → abort: may belong to a different chain.
-- If `status` ≠ `publish-done` → abort: "Expected `publish-done` but found `<actual>`.
-  Run the previous phase first."
-- If the `## Phase 4 — Publish`, `package`, or `version` section/field is missing → abort
-  as corrupted.
-- Check `.release-state.lock`; abort if present, else create it.
+- If there is no run → abort: "No release run found. Run `release-changelog` first."
+- If the run is not `active` with `currentPhase: "verify"` → abort: "Expected the run
+  to be at phase `verify` but it is at `<currentPhase/status>`. Run that phase's skill
+  instead."
+- If `data.package` / `data.version`, or the publish phase's `artifacts.npmUrl` /
+  `artifacts.releaseUrl` (or its summary), is missing → abort: "Phase pointer looks
+  right but the Phase 4 output is missing. Treat as corrupted — restart the chain or
+  repair via chain action 'update'."
+- If the tool reports the chain is locked by another session, abort; a dead session's
+  lock can be cleared with `action: "unlock"`. Never create lock files yourself.
 
 ## Workflow
 
@@ -48,23 +56,31 @@ Produce a short release report: package, version, npm URL, tag, release URL, and
 result of each check (✓ / ✗). Name any check that failed and what to do about it — do not
 paper over a failure.
 
-## Update State
+### Step 3 — Complete the phase
 
-Atomically rewrite `.release-state.md` (temp + rename), appending:
+Call the **chain tool**:
 
-```markdown
-## Phase 5 — Verify
-**Output**: verification report (all checks ✓ / listed failures)
-**Key decisions**: release confirmed live at <npm URL> / <release URL>
+```
+action: "complete-phase", chain: "release", phase: "verify",
+summary: "verification report: all checks ✓ / <listed failures>; release confirmed live at <npm URL> / <release URL>",
+data: { "verificationReport": "<the report from Step 2>" },
+artifacts: {
+  "npmUrl": "<npm package page URL>",
+  "releaseUrl": "<GitHub release URL>",
+  "tag": "v<version>"
+}
 ```
 
-and updating `status: complete`. Delete `.release-state.lock` after the write.
+The tool validates this is the current phase, marks the run `complete`, and rewrites
+the JSON + markdown projection atomically — this is the final phase, so the run's
+`status` becomes `complete` and its lock is released.
 
 ## Handoff
 
 After completing this phase, output exactly:
 
-> Chain complete! All 5 phases finished. State written to `.release-state.md`.
+> Chain complete! All 5 phases finished. Chain state updated
+> (`.pi/fairy-tales/chains/release/state.json`).
 > Run `release-changelog` again to start a new release.
 
 Do not continue. Stop here.

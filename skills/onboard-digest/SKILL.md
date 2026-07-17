@@ -11,44 +11,52 @@ description: >
 
 # Onboard: Digest
 
-Chain version: 1
+Chain version: 2 (durable state contract — see docs/STATE-CONTRACT.md)
 
 Phase 3 of 3: onboard-map → onboard-deepen → **onboard-digest**
 
 ## Overview
 
-Final phase. Turns the map from Phase 1 and the deepened understanding from Phase 2 into
-a single polished deliverable: a self-contained HTML architecture overview, published
-with the **artifact tool** and opened for the user. Also writes the top durable facts to
-fairy-tales memory so a future session (even one that never runs this chain again) starts
-with context. Reports faithfully — if a hotspot from Phase 1 was never deep-read in
-Phase 2, the overview says so rather than glossing over the gap.
+Final phase. Turns the map from Phase 1 (`data.map`/`data.hotspots`) and the deepened
+understanding from Phase 2 (`data.deepened`) into a single polished deliverable: a
+self-contained HTML architecture overview, published with the **artifact tool** and
+opened for the user. Also writes the top durable facts to fairy-tales memory so a
+future session (even one that never runs this chain again) starts with context.
+Reports faithfully — if a hotspot from Phase 1 was never deep-read in Phase 2, the
+overview says so rather than glossing over the gap.
+
+All chain state is managed by the **chain tool**: authoritative JSON at
+`.pi/fairy-tales/chains/onboard/state.json` with a human-readable `state.md`
+projection beside it. Never create or edit state files by hand, and never create lock
+files — the tool locks for you.
 
 ## Load State
 
-Read `.onboard-state.md`:
+Call the **chain tool** with `action: "status", chain: "onboard"` (a legacy
+`.onboard-state.md` from an older version is imported automatically):
 
-- If missing → abort: "No state file found. Run `onboard-map` first."
-- If frontmatter does not parse or `chain_version` ≠ `1` → abort: malformed or
-  incompatible-edition state file.
-- If `status` is not one of `map-done | deepen-done | complete` → abort: "Unrecognized
-  status — this state file may belong to a different or since-edited chain."
-- If `status` ≠ `deepen-done` → abort: "Expected status `deepen-done` but found
-  `<actual>`. Run the previous phase first."
-- If the `## Phase 2 — Deepen` section is missing → abort: "Status looks right but the
-  Phase 2 output is missing. Treat as corrupted."
-- Check `.onboard-state.lock`; abort if present, else create it before writing.
+- If there is no run → abort: "No onboard run found. Run `onboard-map` first."
+- If the run is not `active` with `currentPhase: "digest"` → abort: "Expected the run
+  to be at phase `digest` but it is at `<currentPhase/status>`. Run that phase's skill
+  instead."
+- If `data.deepened` (or the deepen phase summary) is missing → abort: "Phase pointer
+  looks right but the Phase 2 output is missing. Treat as corrupted — restart the
+  chain or repair via chain action 'update'."
+- If the tool reports the chain is locked by another session, abort; a dead session's
+  lock can be cleared with `action: "unlock"`. Never create lock files yourself.
 
 ## Workflow
 
 ### Step 1 — Build the architecture overview content
 
-From `## Phase 1 — Map` and `## Phase 2 — Deepen`, assemble:
+From `data.map`, `data.hotspots`, and `data.deepened`, assemble:
 
 - **Module map** — the repo's major modules/packages and how they relate.
 - **Data-flow diagram** — the key flow(s) traced in Phase 2, shown visually.
 - **"Start here" reading guide** — an ordered list of the 3-6 hotspot files a newcomer
-  should read first, with a one-line reason for each (why it's the right starting point).
+  should read first, with a one-line reason for each (why it's the right starting
+  point). If a flagged hotspot from Phase 1 has no matching entry in `data.deepened`,
+  say so explicitly rather than silently dropping it.
 
 ### Step 2 — Publish with the artifact tool
 
@@ -62,23 +70,27 @@ Call the fairy-tales memory `remember` tool with the highest-value durable facts
 the whole session (architecture summary, key conventions, gotchas) — a small, curated
 set, not everything already stored in Phase 2.
 
-## Update State
+### Step 4 — Complete the phase
 
-Atomically rewrite `.onboard-state.md` (temp file + rename), appending:
+Call the **chain tool**:
 
-```markdown
-## Phase 3 — Digest
-**Output**: architecture overview artifact published and opened at <artifact URL/path>
-**Key decisions**: top facts written to fairy-tales memory: <list>
+```
+action: "complete-phase", chain: "onboard", phase: "digest",
+summary: "architecture overview artifact published and opened; top facts written to fairy-tales memory: <list>",
+data: {},
+artifacts: { "overviewUrl": "<artifact tool URL>" }
 ```
 
-and updating `status: complete`. Delete `.onboard-state.lock` after the write.
+The tool validates this is the current phase, marks the run `complete`, and rewrites
+the JSON + markdown projection atomically — this is the final phase, so the run's
+`status` becomes `complete` and its lock is released.
 
 ## Handoff
 
 After completing this phase, output exactly:
 
-> Chain complete! All 3 phases finished. State written to `.onboard-state.md`.
+> Chain complete! All 3 phases finished. Chain state updated
+> (`.pi/fairy-tales/chains/onboard/state.json`).
 > Run `onboard-map` again to start a new session.
 
 Do not continue. Stop here.

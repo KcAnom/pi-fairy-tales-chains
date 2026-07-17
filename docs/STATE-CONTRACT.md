@@ -91,7 +91,7 @@ restart), it should enqueue a **quest** (pi-fairy-tales ≥ 0.15) with:
 
 ## Compatibility
 
-- `release` and `onboard` skills still write legacy v1 markdown themselves;
-  the tool reads (imports) them but their skills have not been migrated yet.
-- `feature-ship`, `bughunt`, `migrate`, `research` skills drive the `chain`
-  tool exclusively as of chains 0.2.0.
+- All six chains (`feature-ship`, `bughunt`, `migrate`, `research`, `release`,
+  `onboard`) drive the `chain` tool exclusively as of chains 0.2.0.
+- Legacy `.{chain}-state.md` files written by 0.1.x are imported automatically
+  on the first read (see above) — no manual migration needed.

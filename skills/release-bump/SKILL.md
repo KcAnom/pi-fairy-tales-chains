@@ -9,7 +9,7 @@ description: >
 
 # Release: Bump
 
-Chain version: 1
+Chain version: 2 (durable state contract — see docs/STATE-CONTRACT.md)
 
 Phase 2 of 5: release-changelog → **release-bump** → release-tag → release-publish → release-verify
 
@@ -19,34 +19,37 @@ Applies the version decided in Phase 1 to `package.json` and prepends the drafte
 CHANGELOG entry to `CHANGELOG.md`. Makes no git tag and does not publish — those are
 later phases — so this stays a reviewable, reversible edit.
 
+All chain state is managed by the **chain tool**: authoritative JSON at
+`.pi/fairy-tales/chains/release/state.json` with a human-readable `state.md`
+projection beside it. Never create or edit state files by hand, and never create lock
+files — the tool locks for you.
+
 ## Load State
 
-Read `.release-state.md` from the project root:
+Call the **chain tool** with `action: "status", chain: "release"` (a legacy
+`.release-state.md` from an older version is imported automatically):
 
-- If missing → abort: "No state file found. Run `release-changelog` first."
-- If the frontmatter does not parse, or `chain_version` ≠ `1` → abort: state file is
-  malformed or written by an incompatible edition of the chain.
-- If `status` is not one of `changelog-done | bump-done | tag-done | publish-done |
-  complete` → abort: "Unrecognized status — this state file may belong to a different
-  or since-edited chain."
-- If `status` ≠ `changelog-done` → abort: "Expected status `changelog-done` but found
-  `<actual>`. Run the previous phase first."
-- If the `## Phase 1 — Changelog` section or the `version` field is missing → abort:
-  "Status looks right but the Phase 1 output is missing. Treat as corrupted."
-- Check `.release-state.lock`; abort if present, else create it before writing.
+- If there is no run → abort: "No release run found. Run `release-changelog` first."
+- If the run is not `active` with `currentPhase: "bump"` → abort: "Expected the run to
+  be at phase `bump` but it is at `<currentPhase/status>`. Run that phase's skill
+  instead."
+- If `data.package` / `data.version` / `data.changelogEntry` (or the changelog phase
+  summary) is missing → abort: "Phase pointer looks right but the Phase 1 output is
+  missing. Treat as corrupted — restart the chain or repair via chain action 'update'."
+- If the tool reports the chain is locked by another session, abort; a dead session's
+  lock can be cleared with `action: "unlock"`. Never create lock files yourself.
 
 ## Workflow
 
 ### Step 1 — Apply the version
 
-Set `package.json` `version` to the state file's `version` field (exact value — never a
-different number than Phase 1 agreed).
+Set `package.json` `version` to `data.version` (exact value — never a different number
+than Phase 1 agreed).
 
 ### Step 2 — Write the changelog
 
-Prepend the drafted CHANGELOG entry (stored in the state file) to `CHANGELOG.md`,
-creating the file with a `# Changelog` header if it does not exist. Keep existing entries
-below the new one.
+Prepend `data.changelogEntry` to `CHANGELOG.md`, creating the file with a `# Changelog`
+header if it does not exist. Keep existing entries below the new one.
 
 ### Step 3 — Sanity check
 
@@ -55,23 +58,25 @@ below the new one.
 - Confirm the new version does not already exist on the registry if this is an npm
   package: `npm view <package>@<version> version` should 404.
 
-## Update State
+### Step 4 — Complete the phase
 
-Atomically rewrite `.release-state.md` (temp file + rename), appending:
+Call the **chain tool**:
 
-```markdown
-## Phase 2 — Bump
-**Output**: package.json set to <version>; CHANGELOG.md updated
-**Key decisions**: files staged but NOT committed (release-tag handles the commit)
+```
+action: "complete-phase", chain: "release", phase: "bump",
+summary: "package.json set to <version>; CHANGELOG.md updated; files staged but NOT committed (release-tag handles the commit)",
+data: {},
+artifacts: {}
 ```
 
-and updating `status: bump-done`. Delete `.release-state.lock` after the write.
+The tool validates this is the current phase, advances the run to `tag`, and rewrites
+the JSON + markdown projection atomically.
 
 ## Handoff
 
 After completing this phase, output exactly:
 
-> Phase 2 complete. State written to `.release-state.md`.
+> Phase 2 complete. Chain state updated (`.pi/fairy-tales/chains/release/state.json`).
 > Run `/release-tag` to begin Phase 3.
 
 Do not start the next phase. Do not offer to continue. Output only the handoff line and stop.

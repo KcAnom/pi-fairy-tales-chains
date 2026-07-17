@@ -35,7 +35,7 @@ pi install git:github.com/KcAnom/pi-fairy-tales-chains
 
 Each is a **pipeline** (human-in-the-loop): every phase reads the shared chain state, does its work, updates state, and hands off with `Run /<chain>-<next>`. You review between phases; the durable state means you can stop and resume days later.
 
-Since 0.2.0, `feature-ship`, `bughunt`, `migrate`, and `research` track state through the bundled **`chain` tool**: authoritative JSON at `.pi/fairy-tales/chains/<chain>/state.json` with a human-readable `state.md` projection, TTL'd cross-session locking, and automatic import of legacy `.<chain>-state.md` files (see `docs/STATE-CONTRACT.md`). Their heavy phase work runs as **quests** (pi-fairy-tales ≥ 0.15) with idempotent dedupe keys, so a crashed phase resumes the same work instead of duplicating it. `release` and `onboard` still use the legacy root markdown state files.
+Since 0.2.0, all six chains track state through the bundled **`chain` tool**: authoritative JSON at `.pi/fairy-tales/chains/<chain>/state.json` with a human-readable `state.md` projection, TTL'd cross-session locking, and automatic import of legacy `.<chain>-state.md` files (see `docs/STATE-CONTRACT.md`). Heavy phase work runs as **quests** (pi-fairy-tales ≥ 0.15) with idempotent dedupe keys, so a crashed phase resumes the same work instead of duplicating it.
 
 | Chain | Phases | What it does | Fairy-tales muscle |
 |---|---|---|---|

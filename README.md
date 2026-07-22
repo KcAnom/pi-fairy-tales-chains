@@ -12,6 +12,8 @@ Each chain is built to leverage [**pi-fairy-tales**](https://github.com/KcAnom/p
 
 > **Why chains?** pi-fairy-tales is powerful but mostly *in-session* — a `/ultraplan` run or a subagent fan-out is gone when the session ends. A chain writes state between phases, turning that horsepower into a **multi-day, resumable pipeline** with human review between steps.
 
+How the two packages fit together — repos, runtime footprint, config precedence: [Ecosystem Map](https://github.com/KcAnom/pi-fairy-tales/blob/main/docs/ECOSYSTEM.md).
+
 ## Install
 
 **Requires [`pi-fairy-tales`](https://github.com/KcAnom/pi-fairy-tales)** — the chains call its tools (`agent`, `artifact`, `/ultraplan`, `fetch`, hooks). Install both as top-level packages:
